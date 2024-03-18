@@ -14,37 +14,27 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-"""Neural network related operators."""
-from .nn import (
-    adaptive_avg_pool1d,
-    adaptive_avg_pool2d,
-    adaptive_avg_pool3d,
-    attention,
-    attention_var_len,
-    avg_pool1d,
-    avg_pool2d,
-    avg_pool3d,
-    batch_norm,
-    conv1d,
-    conv1d_transpose,
-    conv2d,
-    conv2d_transpose,
-    conv3d,
-    cross_entropy_with_logits,
-    dropout,
-    gelu,
-    gelu_tanh,
-    group_norm,
-    layer_norm,
-    leakyrelu,
-    log_softmax,
-    max_pool1d,
-    max_pool2d,
-    max_pool3d,
-    nll_loss,
-    pad,
-    relu,
-    rms_norm,
-    silu,
-    softmax,
-)
+"""tvm.contrib.msc.core.gym.namespace"""
+
+
+class GYMObject(object):
+    """Enum all gym objects"""
+
+    BASE = "base"
+    ENV = "env"
+    AGENT = "agent"
+    SERVICE = "service"
+
+
+class GYMAction(object):
+    """Enum all gym actions"""
+
+    INIT = "init"
+    RESET = "reset"
+    GET_STATE = "get_state"
+    CHOOSE_ACTION = "choose_action"
+    STEP = "step"
+    STORE = "store"
+    LEARN = "learn"
+    SUMMARY = "summary"
+    CLEANUP = "cleanup"
