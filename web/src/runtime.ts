@@ -995,6 +995,171 @@ export interface InitProgressReport {
 
 export type InitProgressCallback = (report: InitProgressReport) => void;
 
+
+/**
+ * IndexDB Cache to store model data in indexDB
+ */
+export class ArtifactIndexDBCache implements ArtifactCacheTemplate {
+  private dbName?: string;
+  private dbVersion = 1;
+  private db: IDBDatabase | undefined;
+
+  private async initDB() {
+    if (this.db != null){
+      return; // the db is already inialized
+    }
+
+    return new Promise<void>((resolve, reject) => {
+      const request = indexedDB.open(this.dbName, this.dbVersion);
+      request.onupgradeneeded = (event) => {
+        this.db = (event.target as IDBOpenDBRequest).result;
+        if (!this.db.objectStoreNames.contains('urls')) {
+          this.db.createObjectStore('urls', { keyPath: 'url' });
+        }
+      };
+      request.onsuccess = (event) => {
+        this.db = (event.target as IDBOpenDBRequest).result;
+        resolve();
+      };
+      request.onerror = (event) => {
+        console.error("Database error: ", (event.target as IDBOpenDBRequest).error);
+        reject((event.target as IDBOpenDBRequest).error);
+      };
+    });
+  }
+
+  /* Check if the URL is in DB or not */
+  private async isUrlInDB(url: string): Promise<boolean> {
+    return new Promise<boolean>((resolve, reject) => {
+      const transaction = this.db?.transaction(['urls'], 'readonly');
+      if (transaction === undefined){
+        return false;
+      }
+      const store = transaction.objectStore('urls');
+      const request = store.get(url);
+      request.onsuccess = () => {
+        resolve(request.result !== undefined);
+      };
+      request.onerror = (event) => {
+        reject((event.target as IDBRequest).error);
+      };
+    });
+  }
+
+  constructor(dbName: string){
+    this.dbName = dbName;
+  }
+
+  async asyncGetHelper(url: string){
+    return new Promise((resolve, reject) => {
+      let result: any;
+      const transaction = this.db?.transaction(['urls'], 'readonly');
+      if (transaction === undefined){
+        return false;
+      }
+      transaction.oncomplete = _ => resolve(result);
+      transaction.onerror = e => reject(transaction.error);
+      const objectStore = transaction.objectStore('urls');
+      const getRequest = objectStore.get(url);
+      getRequest.onsuccess = () => {
+        result = getRequest.result;
+      }
+    })
+  }
+
+  async fetchWithCache(url: string) {
+    await this.initDB(); // await the initDB process
+    const isInDB = await this.isUrlInDB(url);
+    if (!isInDB) {
+      const response = await this.addToCache(url);
+      return response;
+    } else {
+      // URL found in DB, just fetch without storing
+      const result = await this.asyncGetHelper(url);
+      if (result != null && typeof result === "object" && "data" in result){
+        return result.data;
+      }
+      return null;
+    }
+  }
+
+  async addToIndexDB(url: string, response: any){
+    await this.initDB();
+    const data = await response.json();
+    return new Promise<void>((resolve, reject) => {
+      const transaction = this.db?.transaction(['urls'], 'readwrite');
+      if (transaction === undefined){
+        return;
+      }
+      const store = transaction.objectStore('urls');
+      const request = store.add({data, url}); // Index DB follows a {value, key} format, instead of {key, value} format!
+      request.onsuccess = () => resolve();
+      request.onerror = (event) => reject((event.target as IDBRequest).error);
+    });
+  }
+
+
+  async addToCache(url: string) :Promise<any>{
+    let response: Response;
+    try {
+      response = await fetch(url);
+      if (!response.ok) {
+        throw new Error('Network response was not ok');
+      }
+      const response_copy = response.clone();
+      await this.addToIndexDB(url, response_copy);
+      return response;
+    } catch (error) {
+      console.error("There was a problem fetching the data:", error);
+    }
+  }
+
+  async hasAllKeys(keys: string[]) {
+    await this.initDB(); // Ensure the DB is initialized
+    return new Promise<boolean> ((resolve, reject) => {
+      const transaction = this.db?.transaction(['urls'], 'readonly');
+      if (transaction === undefined){
+        return;
+      }
+      const store = transaction.objectStore('urls');
+      let allExist = true;
+      for (const key of keys) {
+        const request = store.get(key);
+        new Promise<void>((resolve) => {
+          request.onsuccess = () => {
+            if (request.result === undefined) {
+              allExist = false;
+            }
+            resolve();
+          };
+          request.onerror = () => {
+            allExist = false;
+            resolve();
+          };
+        });
+        if (!allExist) {
+          break;
+        }
+      }
+      resolve(allExist);
+    });
+  }
+
+  async deleteInCache(url: string) {
+    await this.initDB();
+    const transaction = this.db?.transaction(['urls'], 'readwrite');
+    if (transaction === undefined){
+      return;
+    }
+    const store = transaction.objectStore('urls');
+    const request = store.delete(url);
+    await new Promise<void>((resolve, reject) => {
+      request.onsuccess = () => resolve();
+      request.onerror = () => reject(request.error);
+    });
+    return;
+  }
+}
 /**
  * Cache to store model related data.
  */
